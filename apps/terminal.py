@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# Simple web terminal (POST a command, get output). WARNING: executes shell commands.
-
+# Terminal: binds to 0.0.0.0 (WARNING: executes commands)
 import sys
 import http.server
 import socketserver
@@ -52,8 +51,8 @@ class TermHandler(http.server.BaseHTTPRequestHandler):
         self._respond(HTML.format(cmd=html.escape(cmd), out=html.escape(out)))
 
 if __name__ == "__main__":
-    with socketserver.ThreadingTCPServer(("", PORT), TermHandler) as httpd:
-        print(f"Terminal running at http://localhost:{PORT}/")
+    print(f"Terminal running on 0.0.0.0:{PORT}")
+    with socketserver.ThreadingTCPServer(("0.0.0.0", PORT), TermHandler) as httpd:
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
