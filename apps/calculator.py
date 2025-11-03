@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# Simple calculator app (no external libs). Uses ast.literal_eval for safer evaluation.
-
+# Calculator: binds to 0.0.0.0
 import sys
 import http.server
 import socketserver
@@ -11,7 +10,6 @@ import operator as op
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 6002
 
-# safe eval based on ast: supports basic arithmetic
 ALLOWED_OPERATORS = {
     ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul, ast.Div: op.truediv,
     ast.Pow: op.pow, ast.Mod: op.mod, ast.USub: op.neg, ast.UAdd: op.pos,
@@ -20,6 +18,8 @@ ALLOWED_OPERATORS = {
 
 def safe_eval(expr):
     def _eval(node):
+        if isinstance(node, ast.Constant):  # Python 3.8+
+            return node.value
         if isinstance(node, ast.Num):
             return node.n
         if isinstance(node, ast.BinOp):
@@ -79,8 +79,8 @@ class CalcHandler(http.server.BaseHTTPRequestHandler):
         self._respond(HTML.format(expr=html.escape(expr), res=html.escape(res)))
 
 if __name__ == "__main__":
-    with socketserver.ThreadingTCPServer(("", PORT), CalcHandler) as httpd:
-        print(f"Calculator running at http://localhost:{PORT}/")
+    print(f"Calculator running on 0.0.0.0:{PORT}")
+    with socketserver.ThreadingTCPServer(("0.0.0.0", PORT), CalcHandler) as httpd:
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
