@@ -1,11 +1,17 @@
-from flask import Flask, render_template_string, request, redirect, url_for
-import subprocess
-import threading
+#!/usr/bin/env python3
+# Simple dashboard using Python standard library (no Flask)
+
+import http.server
+import socketserver
 import socket
+import threading
+import subprocess
+import urllib.parse
+import html
+import sys
 
-app = Flask(__name__)
+PORT = 5000
 
-# Apps and their startup commands
 APPS = {
     "notepad": "apps/notepad.py",
     "calculator": "apps/calculator.py",
@@ -13,7 +19,41 @@ APPS = {
     "terminal": "apps/terminal.py",
 }
 
-# Dynamic port assignment for new apps
+HTML_TEMPLATE = """<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PyOS Dashboard (no-framework)</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; background: #121212; color: #eee; }}
+    #main {{ width: 720px; margin: 30px auto; }}
+    input[type=text] {{ width: 70%; padding: 10px; font-size: 16px; }}
+    button {{ padding: 10px 14px; font-size: 16px; }}
+    .msg {{ margin-top: 16px; padding: 10px; background: #222; border-radius: 6px; }}
+    a {{ color: #7fc7ff; }}
+  </style>
+</head>
+<body>
+  <div id="main">
+    <h1>PyOS Dashboard (no-framework)</h1>
+    <form method="POST" action="/">
+      <input name="cmd" autofocus placeholder="Type command: notepad, calculator, filemanager, terminal" />
+      <button type="submit">Run</button>
+    </form>
+    {resp_block}
+    <hr/>
+    <div><strong>Available apps:</strong></div>
+    <ul>
+      {apps_list}
+    </ul>
+    <div style="font-size:12px;color:#aaa;margin-top:10px;">
+      Note: In Codespaces you may need to forward the app ports to open them in the browser.
+    </div>
+  </div>
+</body>
+</html>
+"""
+
 def find_free_port():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(("", 0))
@@ -22,67 +62,55 @@ def find_free_port():
     return port
 
 def launch_app(app_name):
-    if app_name in APPS:
-        port = find_free_port()
-        # Start the app in a new process/thread on an available port
-        # Pass port as env variable or command line argument
-        def run_app():
-            subprocess.Popen(["python", APPS[app_name], str(port)])
-        threading.Thread(target=run_app).start()
-        return port
-    return None
+    script = APPS.get(app_name)
+    if not script:
+        return None, "Unknown app"
+    port = find_free_port()
+    # Start as a new process; it will bind to the given port
+    try:
+        subprocess.Popen([sys.executable, script, str(port)])
+        return port, None
+    except Exception as e:
+        return None, str(e)
 
-TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>PyOS Dashboard</title>
-    <style>
-        body { font-family: Arial; background: #222; color: #eee; }
-        #main { width: 500px; margin: auto; }
-        input { width: 80%; padding: 10px; font-size: 18px; }
-        .cmd { padding: 5px; margin: 5px 0; background: #333;}
-        a { color: #7fc7ff; }
-    </style>
-</head>
-<body>
-    <div id="main">
-        <h2>PyOS Dashboard</h2>
-        <form method="POST">
-            <input autofocus name="cmd" placeholder="Type command (notepad, calculator, filemanager, terminal)" />
-            <button type="submit">Run</button>
-        </form>
-        {% if resp %}
-        <div class="cmd">
-            {{ resp | safe }}
-        </div>
-        {% endif %}
-        <hr>
-        <b>Available Apps:</b>
-        <ul>
-        {% for k in apps %}
-        <li><b>{{k}}</b></li>
-        {% endfor %}
-        </ul>
-    </div>
-</body>
-</html>
-"""
+class Handler(http.server.BaseHTTPRequestHandler):
+    def _render(self, resp_block=""):
+        apps_list = "\n".join(f"<li><b>{html.escape(k)}</b></li>" for k in APPS.keys())
+        body = HTML_TEMPLATE.format(resp_block=resp_block, apps_list=apps_list)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body.encode("utf-8"))))
+        self.end_headers()
+        self.wfile.write(body.encode("utf-8"))
 
-@app.route("/", methods=["GET", "POST"])
-def home():
-    resp = ""
-    if request.method == "POST":
-        cmd = request.form.get("cmd").strip()
-        if cmd in APPS:
-            port = launch_app(cmd)
-            if port:
-                resp = f"Launching <b>{cmd}</b> on <a href='http://localhost:{port}' target='_blank'>port {port}</a>"
+    def do_GET(self):
+        self._render()
+
+    def do_POST(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8")
+        data = urllib.parse.parse_qs(body)
+        cmd = data.get("cmd", [""])[0].strip()
+        resp_block = ""
+        if cmd:
+            if cmd in APPS:
+                port, err = launch_app(cmd)
+                if port:
+                    link = f"http://localhost:{port}/"
+                    resp_block = f'<div class="msg">Launched <b>{html.escape(cmd)}</b> on <a href="{link}" target="_blank">{html.escape(link)}</a></div>'
+                else:
+                    resp_block = f'<div class="msg">Failed to launch <b>{html.escape(cmd)}</b>: {html.escape(err or "unknown")}</div>'
             else:
-                resp = f"Failed to launch app."
+                resp_block = f'<div class="msg">Unknown command: <b>{html.escape(cmd)}</b></div>'
         else:
-            resp = "Unknown command/app."
-    return render_template_string(TEMPLATE, resp=resp, apps=APPS.keys())
+            resp_block = '<div class="msg">No command provided.</div>'
+        self._render(resp_block=resp_block)
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    with socketserver.ThreadingTCPServer(("", PORT), Handler) as httpd:
+        print(f"Dashboard running at http://localhost:{PORT}/")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            print("Shutting down dashboard")
+            httpd.server_close()
