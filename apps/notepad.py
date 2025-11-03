@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-# Simple notepad app using http.server (no external libs)
-
+# Notepad: binds to 0.0.0.0, port passed as argv[1]
 import sys
 import http.server
 import socketserver
 import urllib.parse
 import html
+import os
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 6001
-
 saved_text = ""
 
 HTML = """<!doctype html>
@@ -49,8 +48,8 @@ class NotepadHandler(http.server.BaseHTTPRequestHandler):
         self._respond(body)
 
 if __name__ == "__main__":
-    with socketserver.ThreadingTCPServer(("", PORT), NotepadHandler) as httpd:
-        print(f"Notepad running at http://localhost:{PORT}/")
+    print(f"Notepad running on 0.0.0.0:{PORT}")
+    with socketserver.ThreadingTCPServer(("0.0.0.0", PORT), NotepadHandler) as httpd:
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
