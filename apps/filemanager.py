@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
-# Simple file manager using the standard library
 
+#!/usr/bin/env python3
+# File Manager: binds to 0.0.0.0
 import sys
 import http.server
 import socketserver
@@ -54,14 +54,18 @@ class FMHandler(http.server.BaseHTTPRequestHandler):
                 if os.path.isdir(full):
                     items_html += f'<li>[DIR] {html.escape(e)}</li>'
                 else:
-                    items_html += f'<li>{html.escape(e)} ({os.path.getsize(full)} bytes)</li>'
+                    try:
+                        size = os.path.getsize(full)
+                    except:
+                        size = "?"
+                    items_html += f'<li>{html.escape(e)} ({size} bytes)</li>'
         except Exception as exc:
             items_html = f"<li>Error: {html.escape(str(exc))}</li>"
         self._respond(HTML.format(path=html.escape(path), items=items_html))
 
 if __name__ == "__main__":
-    with socketserver.ThreadingTCPServer(("", PORT), FMHandler) as httpd:
-        print(f"File Manager running at http://localhost:{PORT}/")
+    print(f"File Manager running on 0.0.0.0:{PORT}")
+    with socketserver.ThreadingTCPServer(("0.0.0.0", PORT), FMHandler) as httpd:
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
